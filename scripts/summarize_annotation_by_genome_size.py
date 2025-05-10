@@ -1,43 +1,20 @@
 #!/usr/bin/env python3
-"""
-summarize_annotation_by_genome_size.py
-
-Summarizes genome annotation features from a HANNO `.bedDB` file and computes:
-  - Gene counts per functional category
-  - Total coding length (bp) per category
-  - Percentage of the scaffolded genome occupied by those coding bases
-
-Inputs:
-  1. HANNO .bedDB file (tab-delimited)
-  2. Total scaffolded genome size (in bp)
-
-Usage:
-  python3 summarize_annotation_by_genome_size.py BESTMODELS-FINAL.bedDB 1748533034
-
-Output:
-  Printed summary table with category-wise gene counts, coding bp, and % genome
-
-Author: K. Kopp / Assistant
-Date: 2025
-"""
 
 import pandas as pd
 import sys
 
-# Check arguments
-if len(sys.argv) != 2 and len(sys.argv) != 3:
+if len(sys.argv) != 3:
     print("Usage: python3 summarize_annotation_by_genome_size.py <bedDB_file> <genome_size_bp>")
     sys.exit(1)
 
 beddb_path = sys.argv[1]
-
 try:
     genome_size = int(sys.argv[2])
-except:
-    print("Error: genome_size must be an integer (e.g., 1748533034).")
+except ValueError:
+    print("ERROR: genome_size_bp must be an integer (e.g., 1748533034)")
     sys.exit(1)
 
-# Define expected columns
+# Load and preprocess
 colnames = [
     "chrom", "start", "end", "transcript_id", "score", "strand",
     "cds_start", "cds_end", "color", "num_exons", "exon_sizes", "exon_starts",
@@ -49,80 +26,69 @@ colnames = [
     "cds_exons_count", "mRNA_exon_count"
 ]
 
-# Load and preprocess
-beddb = pd.read_csv(
-    beddb_path,
-    sep='\t',
-    names=colnames,
-    comment='#',
-    dtype=str,
-    low_memory=False,
-    na_values=['-']
+bed = pd.read_csv(
+    beddb_path, sep="\t", names=colnames, comment="#",
+    dtype=str, na_values=["-"], low_memory=False
 )
 
-# Extract gene ID without .t1 suffix
-beddb["base_gene_id"] = beddb["transcript_id"].str.extract(r'(hanno\.g\d+)')
+bed["base_gene_id"] = bed["transcript_id"].str.extract(r"(hanno\.g\d+)")
+bed["cds_start"] = pd.to_numeric(bed["cds_start"], errors="coerce")
+bed["cds_end"] = pd.to_numeric(bed["cds_end"], errors="coerce")
+bed["start"] = pd.to_numeric(bed["start"], errors="coerce")
+bed["end"] = pd.to_numeric(bed["end"], errors="coerce")
+bed["num_exons"] = pd.to_numeric(bed["num_exons"], errors="coerce")
 
-# Drop rows with missing CDS coordinates
-beddb = beddb[pd.notna(beddb['cds_start']) & pd.notna(beddb['cds_end'])].copy()
+summary_rows = []
 
-# Convert CDS start/end to integer for calculation
-beddb["cds_start"] = beddb["cds_start"].astype(int)
-beddb["cds_end"] = beddb["cds_end"].astype(int)
+# Row 1: Gene spans
+gene_spans = bed.groupby("base_gene_id")[["start", "end"]].agg(["min", "max"]).dropna()
+gene_lengths = (gene_spans["end"]["max"] - gene_spans["start"]["min"]).sum()
+summary_rows.append(["Protein coding genes", gene_spans.shape[0], gene_lengths, round(gene_lengths / genome_size * 100, 2)])
 
-# Group by gene
-grouped = beddb.groupby("base_gene_id", group_keys=False)
-total_genes = grouped.ngroups
+# Row 2: mRNA
+mrna_spans = bed.dropna(subset=["transcript_id", "start", "end"])[["transcript_id", "start", "end"]].drop_duplicates()
+mrna_spans["length"] = mrna_spans["end"] - mrna_spans["start"]
+summary_rows.append(["mRNA", mrna_spans.shape[0], mrna_spans["length"].sum(), round(mrna_spans["length"].sum() / genome_size * 100, 2)])
 
-# Total CDS length across all protein-coding genes
-total_coding_bp = grouped[["cds_start", "cds_end"]].apply(
-    lambda df: df.drop_duplicates().apply(lambda x: x["cds_end"] - x["cds_start"], axis=1).sum()
-).sum()
+# Row 3: CDS
+cds_blocks = bed.dropna(subset=["cds_start", "cds_end"])[["cds_start", "cds_end"]].drop_duplicates()
+cds_blocks["length"] = cds_blocks["cds_end"] - cds_blocks["cds_start"]
+summary_rows.append(["CDS", cds_blocks.shape[0], cds_blocks["length"].sum(), round(cds_blocks["length"].sum() / genome_size * 100, 2)])
 
-# Define functional category checks
-def has_function(desc): return any(pd.notna(d) and "hypothetical protein" not in d.lower() for d in desc)
-def has_pfam(val): return any(pd.notna(x) for x in val)
-def has_kog(val): return any(pd.notna(x) for x in val)
-def has_kegg(val): return any(pd.notna(x) for x in val)
-def has_go(val): return any(pd.notna(x) for x in val)
-def has_product(desc): return any(pd.notna(x) for x in desc)
+# Row 4: Exons
+bed["exon_length_total"] = bed["exon_sizes"].apply(lambda val: sum(int(x) for x in str(val).strip(",").split(",") if x) if pd.notna(val) else 0)
+summary_rows.append(["Exons", int(bed["num_exons"].dropna().sum()), bed["exon_length_total"].sum(), round(bed["exon_length_total"].sum() / genome_size * 100, 2)])
 
-# Category definitions
+# Functional annotations
+grouped = bed.groupby("base_gene_id", group_keys=False)
+
+def has_nonhypo(descs): return any(pd.notna(d) and "hypothetical protein" not in d.lower() for d in descs)
+def has_any(col): return any(pd.notna(col))
+
 categories = {
-    "Function prediction":     ('description', has_function),
-    "Pfam domains":            ('pfam',        has_pfam),
-    "KOG assignments":         ('kog',         has_kog),
-    "KEGG pathway mapping":    ('KEGG_Pathway',has_kegg),
-    "GO term annotation":      ('go_terms',    has_go),
-    "Product descriptions":    ('description', has_product)
+    "Function prediction": ("description", has_nonhypo),
+    "Pfam domains": ("pfam", has_any),
+    "KOG assignments": ("kog", has_any),
+    "KEGG pathway mapping": ("KEGG_Pathway", has_any),
+    "GO term annotation": ("go_terms", has_any),
+    "Product descriptions": ("description", has_any)
 }
 
-# Process each category
-summary_rows = []
-for label, (field, check_fn) in categories.items():
-    gene_count = grouped[field].apply(check_fn).sum()
-    cds_bp = grouped[["cds_start", "cds_end", field]].apply(
-        lambda df: (
-            check_fn(df[field]) and df[["cds_start", "cds_end"]].drop_duplicates().apply(
-                lambda x: x["cds_end"] - x["cds_start"], axis=1
-            ).sum()
-        )
-    ).sum()
-    percent = round((cds_bp / genome_size) * 100, 2)
-    summary_rows.append([label, gene_count, cds_bp, percent])
+cds_subset = bed.dropna(subset=["cds_start", "cds_end"]).copy()
+cds_subset["cds_length"] = cds_subset["cds_end"] - cds_subset["cds_start"]
 
-# Add overall row
-summary_rows.append([
-    "All protein-coding genes",
-    total_genes,
-    total_coding_bp,
-    round((total_coding_bp / genome_size) * 100, 2)
-])
+for label, (field, checker) in categories.items():
+    passing = grouped[field].apply(checker)
+    ids = passing[passing].index
+    subset = cds_subset[cds_subset["base_gene_id"].isin(ids)]
+    span = subset[["transcript_id", "cds_start", "cds_end"]].drop_duplicates()
+    span["length"] = span["cds_end"] - span["cds_start"]
+    total_bp = span["length"].sum()
+    summary_rows.append([label, len(ids), total_bp, round(total_bp / genome_size * 100, 2)])
 
-# Format output
-summary = pd.DataFrame(summary_rows, columns=["Category", "Gene Count", "Coding bp", "% of Genome"])
-
-# Print result
+summary = pd.DataFrame(summary_rows, columns=["Category", "Feature Count", "Total Length (bp)", "% of Genome"])
 print(f"\nGenome size used: {genome_size:,} bp")
-print("\nAnnotation Summary by Genome Occupancy (CDS-based):\n")
+print("\nAnnotation Summary by Genome Occupancy:\n")
 print(summary.to_string(index=False))
+
+
