@@ -27,6 +27,7 @@ Date: 2025-05-12
 """
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import pandas as pd
 import numpy as np
 import os
@@ -95,11 +96,11 @@ for i, s in enumerate(scaffolds):
                 ha='left', va='bottom', clip_on=False)
 
     # Axes formatting
-    ax.set_xlabel("Genome position (bp)")
+    ax.set_xlabel("Genome position (Gb)")
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos: f'{x * 1e-9:.2f}'))
     ax.set_ylabel("Coverage (×)")
     ax.set_ylim(0, 60)
     ax.set_title(f"ONT Read Coverage – Scaffold {i+1}")
     plt.tight_layout()
     fig.savefig(f"scaffold_plots/{s}.png", dpi=300)
     plt.close()
-
