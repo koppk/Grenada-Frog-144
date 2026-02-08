@@ -392,11 +392,20 @@ def remove_noise(matches):
 # ---------------------------------------------------------------------------
 
 def sort_query_contigs(matches, q_order, q_contigs, q_abs_start, t_order,
-                       t_contigs, t_abs_start, t_total_len):
+                       t_contigs, t_abs_start, t_total_len,
+                       t_abs_start_orig=None):
     """Sort query contigs to match target chromosome order using gravity.
 
-    Returns new (q_order, q_contigs, q_abs_start, reversed_contigs, rewritten_matches).
+    Args:
+        t_abs_start_orig: original (pre-merge) target abs_start dict for
+                          looking up individual contig positions. Falls back
+                          to t_abs_start if not provided.
+
+    Returns new (q_order, q_contigs, q_abs_start, reversed_contigs).
     """
+    # Use original target abs_start for position lookups (handles merged contigs)
+    t_abs_lookup = t_abs_start_orig if t_abs_start_orig else t_abs_start
+
     # Compute gravity for each (query_contig, target_contig) pair
     gravity = defaultdict(lambda: defaultdict(float))
     for m in matches:
@@ -425,7 +434,8 @@ def sort_query_contigs(matches, q_order, q_contigs, q_abs_start, t_order,
         weight_sum = 0.0
         for m in matches:
             if m["q_name"] == q_name and m["t_name"] == best_t:
-                median_t = (m["t_start"] + m["t_end"]) / 2.0 + t_abs_start[best_t]
+                t_offset = t_abs_lookup.get(best_t, 0)
+                median_t = (m["t_start"] + m["t_end"]) / 2.0 + t_offset
                 w = (1 + m["length"]) ** 2
                 weighted_pos += median_t * w
                 weight_sum += w
@@ -730,6 +740,11 @@ def main():
         t_name, t_order, t_contigs, t_reversed, t_abs_start, t_total = build_index_from_paf(args.paf, "target")
     print(f"  Target: {t_name} - {len(t_order)} contigs, total {t_total:,} bp")
 
+    # --- Preserve original indexes (before merging) for sort/association ---
+    q_order_orig = list(q_order)
+    q_abs_start_orig = dict(q_abs_start)
+    t_abs_start_orig = dict(t_abs_start)
+
     # --- Merge small contigs ---
     q_contig_rename = {}
     t_contig_rename = {}
@@ -771,7 +786,8 @@ def main():
         print("Sorting query contigs to match target order...")
         q_order, q_contigs_plot, q_abs_start, q_reversed_new = sort_query_contigs(
             matches, q_order, q_contigs_plot, q_abs_start,
-            t_order, t_contigs_plot, t_abs_start, t_total)
+            t_order, t_contigs_plot, t_abs_start, t_total,
+            t_abs_start_orig=t_abs_start_orig)
         # Update q_reversed with sorting results
         q_reversed.update(q_reversed_new)
         # Re-parse with new absolute starts
@@ -797,12 +813,12 @@ def main():
                      figsize=tuple(args.figsize) if args.figsize else None,
                      sampled=sampled)
 
-    # 2. Association table
+    # 2. Association table (use original contigs/abs_start, not merged)
     assoc_path = os.path.join(args.outdir,
                               f"{q_name}_{t_name}_assoc.tsv".replace(" ", "_"))
     assoc_rows = build_association_table(
         matches, list(q_contigs.keys()), q_contigs, t_contigs,
-        q_abs_start, t_abs_start, q_reversed)
+        q_abs_start_orig, t_abs_start_orig, q_reversed)
     write_association_table(assoc_rows, assoc_path)
 
     # 3. No-match queries
