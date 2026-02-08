@@ -11,17 +11,17 @@ Replicates the downloadable outputs from the D-Genies web interface:
 Designed to handle large queries with many small/repetitive contigs that
 cannot load in D-Genies' browser-based visualization.
 
-Usage:
-    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/
+Note: The PAF file must be pre-sorted by significance externally
+(e.g. using awk/sort in bash). This script does NO internal sorting.
 
-    # With sorting (reorder query contigs to match target):
-    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --sort
+Usage:
+    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/
+
+    # With query contig reordering (gravity-based, to match target):
+    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --sort
 
     # Limit lines read (for huge PAF files):
-    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --max-lines 200000
-
-    # With noise removal:
-    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --remove-noise
+    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --max-lines 200000
 
 Requires: Python 3.7+, matplotlib, numpy
 """
@@ -29,7 +29,6 @@ Requires: Python 3.7+, matplotlib, numpy
 import argparse
 import csv
 import os
-import re
 import sys
 from collections import OrderedDict, defaultdict
 from math import sqrt
@@ -208,37 +207,6 @@ def rebuild_full_abs_start(merged_order, merged_abs_start, orig_order,
     return full
 
 
-# ---------------------------------------------------------------------------
-# PAF sorting by significance (matches D-Genies Sorter)
-# ---------------------------------------------------------------------------
-
-def compute_significance(parts):
-    """Compute D-Genies significance score for a PAF line."""
-    q_start = int(parts[2])
-    q_end = int(parts[3])
-    t_start = int(parts[7])
-    t_end = int(parts[8])
-    matches = int(parts[9])
-    block_len = int(parts[10])
-    if block_len == 0:
-        return 0.0
-    euclidean = sqrt((q_end - q_start) ** 2 + (t_end - t_start) ** 2)
-    identity = matches / block_len
-    return euclidean * identity
-
-
-def sort_paf_lines(lines):
-    """Sort PAF lines by descending significance score."""
-    scored = []
-    for line in lines:
-        parts = line.rstrip("\n").split("\t")
-        if len(parts) < 12:
-            continue
-        score = compute_significance(parts)
-        scored.append((score, line))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [s[1] for s in scored]
-
 
 # ---------------------------------------------------------------------------
 # PAF parsing
@@ -275,8 +243,11 @@ IDY_LABELS = {
 def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
               q_contig_rename=None, t_contig_rename=None,
               q_abs_start_orig=None, t_abs_start_orig=None,
-              max_lines=None, presorted=False):
+              max_lines=None):
     """Parse a PAF file and return match data.
+
+    The PAF is expected to already be sorted by significance externally
+    (e.g. using bash/awk/samtools). No internal sorting is performed.
 
     Args:
         q_abs_start, t_abs_start: merged abs_start dicts (for display grouping)
@@ -308,10 +279,6 @@ def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
             if line.startswith("#") or not line.strip():
                 continue
             raw_lines.append(line)
-
-    # Sort if not presorted
-    if not presorted:
-        raw_lines = sort_paf_lines(raw_lines)
 
     sampled = False
     if max_lines and len(raw_lines) > max_lines:
@@ -975,8 +942,6 @@ def main():
     parser.add_argument("--figsize", type=float, nargs=2, default=None,
                         metavar=("WIDTH", "HEIGHT"),
                         help="Figure size in inches (default: 50 50, gives 5000x5000px at 100dpi)")
-    parser.add_argument("--presorted", action="store_true",
-                        help="PAF is already sorted by significance (skip re-sorting)")
     parser.add_argument("--no-plot", action="store_true",
                         help="Skip dot plot generation (only produce text files)")
     args = parser.parse_args()
@@ -1019,7 +984,7 @@ def main():
     matches, q_seen, t_seen, sampled = parse_paf(
         args.paf, q_abs_start, t_abs_start, q_contigs, t_contigs,
         q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
-        max_lines=args.max_lines, presorted=args.presorted)
+        max_lines=args.max_lines)
     print(f"  Parsed {len(matches)} alignment matches")
     if sampled:
         print(f"  (sampled to {args.max_lines} lines)")
@@ -1072,7 +1037,7 @@ def main():
             q_contigs_plot, t_contigs_plot,
             q_contig_rename, t_contig_rename,
             q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
-            max_lines=args.max_lines, presorted=args.presorted)
+            max_lines=args.max_lines)
         if args.remove_noise:
             matches = remove_noise(matches)
         print(f"  {len(matches)} matches after re-parse")
