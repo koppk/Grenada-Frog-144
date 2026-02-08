@@ -610,168 +610,334 @@ def _format_bp(val, total_len):
 
 def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
                  t_order, t_contigs, t_abs_start, t_total_len,
-                 q_name, t_name, out_path, dpi=300, figsize=None,
+                 q_name, t_name, out_path, dpi=100, figsize=None,
                  sampled=False):
-    """Draw a D-Genies-style dot plot and save as PNG.
+    """Draw an exact D-Genies-style dot plot and save as PNG.
 
-    Layout matches D-Genies:
-      - Target contig names on TOP x-axis, Mbp scale on BOTTOM x-axis
-      - Query name on RIGHT y-axis, Mbp scale on LEFT y-axis
-      - Origin at bottom-left, diagonal goes bottom-left to top-right
-      - Gray contig-map bars on top and right edges
+    Replicates D-Genies rendering precisely:
+      - 5000x5000 pixel output (50 inches at 100 dpi)
+      - Internal 1000-unit coordinate space
+      - 90% plot area, 5% axes on each side
+      - Target contig names on TOP, Mbp scale on BOTTOM
+      - Query contig names on RIGHT, Mbp scale on LEFT
+      - Origin at bottom-left
+      - Exact D-Genies line widths, colors, dash patterns
     """
+    # D-Genies renders at 5000x5000 pixels.
+    # We use 50x50 inches at 100 dpi = 5000x5000 px.
     if figsize is None:
-        figsize = (12, 12)
+        figsize = (50, 50)
 
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    # D-Genies layout: 90% plot area, 5% margin on each side for axes
+    # In the 50-inch figure, plot area = 45 inches, axes = 2.5 inches each side
+    plot_frac = 0.90
+    axis_frac = 0.05
 
-    # Compute pixel size for minimum visible segment length
-    plot_pixels = figsize[0] * dpi
-    min_seg_len = 2.0 / plot_pixels
+    fig = plt.figure(figsize=figsize, facecolor="white")
 
-    # Adaptive line width
-    if len(matches) < 500:
-        lw = 1.5
-    elif len(matches) < 5000:
-        lw = 1.0
-    elif len(matches) < 50000:
-        lw = 0.6
-    else:
-        lw = 0.3
+    # Create main plot axes at the correct position (5% to 95% in both dims)
+    ax = fig.add_axes([axis_frac, axis_frac, plot_frac, plot_frac])
+    ax.set_facecolor("white")
+
+    # D-Genies internal scale = 1000 units
+    SCALE = 1000.0
+
+    # --- D-Genies exact rendering parameters ---
+    # Match line width: scale/400 = 2.5 in 1000-unit space
+    # In figure coords: 2.5/1000 of the plot area width in inches, converted to points
+    plot_inches = figsize[0] * plot_frac  # 45 inches
+    plot_pixels = plot_inches * dpi       # 4500 pixels
+    # 2.5 units out of 1000 = 0.25% of plot area
+    lw_points = (2.5 / SCALE) * plot_inches * 72.0 / 1.0  # in points (72 pt/inch)
+    # That gives ~8.1 points which is very thick. D-Genies SVG uses viewBox scaling
+    # so the effective line width depends on the viewBox-to-pixel ratio.
+    # SVG viewBox 0-1000 mapped to 90% of 5000px = 4500px.
+    # stroke-width=2.5 in SVG coords means 2.5/1000 * 4500 = 11.25 pixels
+    # In matplotlib points: 11.25 pixels / (dpi/72) = 11.25 / (100/72) = 8.1 points
+    lw = 11.25 / (dpi / 72.0)
+
+    # Break line width: scale/1500 = 0.667 in 1000-unit space
+    # 0.667/1000 * 4500 = 3.0 pixels -> points
+    break_lw = 3.0 / (dpi / 72.0)
+
+    # Break line color and dash pattern
+    break_color = "#7c7c7c"
+    # D-Genies dash "3, 3" in 1000-unit space -> 3/1000 * 4500 = 13.5 pixels
+    break_dash_px = 13.5 / (dpi / 72.0)  # in points
+    break_dash = (break_dash_px, break_dash_px)
+
+    # Axis background color
+    axis_bg_color = "#f4f4f4"
+
+    # Mix zone color
+    mix_color = "#969696"
+
+    # --- Draw axis background (the light gray border bands) ---
+    # D-Genies draws trapezoid backgrounds. We approximate with filled rectangles
+    # covering the axis areas.
+    # Top axis background
+    ax_top_bg = fig.add_axes([axis_frac, axis_frac + plot_frac, plot_frac, axis_frac])
+    ax_top_bg.set_facecolor(axis_bg_color)
+    ax_top_bg.set_xlim(0, 1); ax_top_bg.set_ylim(0, 1)
+    ax_top_bg.set_xticks([]); ax_top_bg.set_yticks([])
+    for spine in ax_top_bg.spines.values():
+        spine.set_visible(False)
+
+    # Right axis background
+    ax_right_bg = fig.add_axes([axis_frac + plot_frac, axis_frac, axis_frac, plot_frac])
+    ax_right_bg.set_facecolor(axis_bg_color)
+    ax_right_bg.set_xlim(0, 1); ax_right_bg.set_ylim(0, 1)
+    ax_right_bg.set_xticks([]); ax_right_bg.set_yticks([])
+    for spine in ax_right_bg.spines.values():
+        spine.set_visible(False)
+
+    # Bottom axis background
+    ax_bottom_bg = fig.add_axes([axis_frac, 0, plot_frac, axis_frac])
+    ax_bottom_bg.set_facecolor(axis_bg_color)
+    ax_bottom_bg.set_xlim(0, 1); ax_bottom_bg.set_ylim(0, 1)
+    ax_bottom_bg.set_xticks([]); ax_bottom_bg.set_yticks([])
+    for spine in ax_bottom_bg.spines.values():
+        spine.set_visible(False)
+
+    # Left axis background
+    ax_left_bg = fig.add_axes([0, axis_frac, axis_frac, plot_frac])
+    ax_left_bg.set_facecolor(axis_bg_color)
+    ax_left_bg.set_xlim(0, 1); ax_left_bg.set_ylim(0, 1)
+    ax_left_bg.set_xticks([]); ax_left_bg.set_yticks([])
+    for spine in ax_left_bg.spines.values():
+        spine.set_visible(False)
 
     # --- Draw alignment matches as line segments, grouped by identity class ---
+    # D-Genies draws class 0 first (behind), then 1, 2, 3 (on top)
+    # Within each class, sorted by identity ascending (low on bottom)
     for idy_class in [0, 1, 2, 3]:
         class_matches = [m for m in matches if m["idy_class"] == idy_class]
         if not class_matches:
             continue
 
+        # Sort within class by identity ascending (lower drawn first)
+        class_matches.sort(key=lambda m: m["idy"])
+
         segments = []
         for m in class_matches:
-            # Normalize to 0..1 scale (NO Y inversion - origin at bottom-left)
-            x1_n = m["x1"] / t_total_len
-            x2_n = m["x2"] / t_total_len
-            y1_n = m["y1"] / q_total_len
-            y2_n = m["y2"] / q_total_len
+            # Scale to 0..SCALE (1000) coordinate space
+            x1_s = m["x1"] / t_total_len * SCALE
+            x2_s = m["x2"] / t_total_len * SCALE
+            # Y-axis inverted: D-Genies does y = SCALE - (genomic_y / total * SCALE)
+            y1_s = SCALE - (m["y1"] / q_total_len * SCALE)
+            y2_s = SCALE - (m["y2"] / q_total_len * SCALE)
 
-            # Ensure minimum visible segment length
-            dx = x2_n - x1_n
-            dy = y2_n - y1_n
-            seg_len = sqrt(dx * dx + dy * dy)
-            if seg_len < min_seg_len and seg_len > 0:
-                scale = min_seg_len / seg_len
-                cx = (x1_n + x2_n) / 2
-                cy = (y1_n + y2_n) / 2
-                x1_n = cx - dx * scale / 2
-                x2_n = cx + dx * scale / 2
-                y1_n = cy - dy * scale / 2
-                y2_n = cy + dy * scale / 2
-            elif seg_len == 0:
-                x1_n -= min_seg_len / 2
-                x2_n += min_seg_len / 2
-
-            segments.append([(x1_n, y1_n), (x2_n, y2_n)])
+            segments.append([(x1_s, y1_s), (x2_s, y2_s)])
 
         lc = LineCollection(segments, colors=IDY_COLORS[idy_class],
-                            linewidths=lw, alpha=0.85,
-                            label=IDY_LABELS[idy_class])
+                            linewidths=lw, capstyle="round",
+                            zorder=2 + idy_class)
         ax.add_collection(lc)
 
-    # --- Draw contig boundaries ---
-    for cname in t_order:
-        x = (t_abs_start[cname] + t_contigs[cname]) / t_total_len
-        if x < 1.0:
-            is_mix = cname.startswith("###MIX###")
-            ax.axvline(x=x, color="#888888" if is_mix else "#cccccc",
-                       linewidth=0.3, linestyle="-")
+    # --- Draw break lines (contig boundaries) ---
+    # D-Genies: dashed "3,3", color #7c7c7c, width scale/1500
+    # Drawn for all contigs except the last one
+    for i, cname in enumerate(t_order):
+        if i == len(t_order) - 1:
+            break
+        x = (t_abs_start[cname] + t_contigs[cname]) / t_total_len * SCALE
+        ax.plot([x, x], [0, SCALE], color=break_color,
+                linewidth=break_lw, linestyle=(0, break_dash),
+                zorder=1)
 
-    for cname in q_order:
-        y = (q_abs_start[cname] + q_contigs[cname]) / q_total_len
-        if y < 1.0:
-            is_mix = cname.startswith("###MIX###")
-            ax.axhline(y=y, color="#888888" if is_mix else "#cccccc",
-                       linewidth=0.3, linestyle="-")
+    for i, cname in enumerate(q_order):
+        if i == len(q_order) - 1:
+            break
+        # Y inverted
+        y = SCALE - (q_abs_start[cname] + q_contigs[cname]) / q_total_len * SCALE
+        ax.plot([0, SCALE], [y, y], color=break_color,
+                linewidth=break_lw, linestyle=(0, break_dash),
+                zorder=1)
 
-    # --- Draw gray contig-map bars (top edge for target, right edge for query) ---
-    bar_width = 0.015  # fraction of plot
-    for cname in t_order:
-        x0 = t_abs_start[cname] / t_total_len
-        x1 = (t_abs_start[cname] + t_contigs[cname]) / t_total_len
-        is_mix = cname.startswith("###MIX###")
-        color = "#cccccc" if is_mix else "#b0b0b0"
-        ax.fill_between([x0, x1], 1.0, 1.0 + bar_width,
-                        color=color, linewidth=0.2, edgecolor="#999999",
-                        clip_on=False)
-
-    for cname in q_order:
-        y0 = q_abs_start[cname] / q_total_len
-        y1 = (q_abs_start[cname] + q_contigs[cname]) / q_total_len
-        is_mix = cname.startswith("###MIX###")
-        color = "#cccccc" if is_mix else "#b0b0b0"
-        ax.fill_between([1.0, 1.0 + bar_width], y0, y1,
-                        color=color, linewidth=0.2, edgecolor="#999999",
-                        clip_on=False)
-
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
+    # --- Set up main plot area ---
+    ax.set_xlim(0, SCALE)
+    ax.set_ylim(0, SCALE)
     ax.set_aspect("equal")
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
 
-    # --- Bottom x-axis: Mbp scale ---
-    n_ticks = 10
-    bp_step_x = t_total_len / n_ticks
-    xtick_vals = [i * bp_step_x for i in range(n_ticks + 1)]
-    ax.set_xticks([v / t_total_len for v in xtick_vals])
-    ax.set_xticklabels([_format_bp(v, t_total_len) for v in xtick_vals],
-                       fontsize=6)
+    # Remove default ticks from main plot
+    ax.set_xticks([])
+    ax.set_yticks([])
 
-    # --- Left y-axis: Mbp scale ---
-    bp_step_y = q_total_len / n_ticks
-    ytick_vals = [i * bp_step_y for i in range(n_ticks + 1)]
-    ax.set_yticks([v / q_total_len for v in ytick_vals])
-    ax.set_yticklabels([_format_bp(v, q_total_len) for v in ytick_vals],
-                       fontsize=6)
+    # --- Bottom axis: Mbp scale (9 tick marks at 10%..90%) ---
+    # D-Genies uses 9 ticks at positions 10%, 20%, ..., 90%
+    ax_bottom = fig.add_axes([axis_frac, 0, plot_frac, axis_frac])
+    ax_bottom.set_xlim(0, 500)
+    ax_bottom.set_ylim(0, 20)
+    ax_bottom.set_facecolor(axis_bg_color)
+    for spine in ax_bottom.spines.values():
+        spine.set_visible(False)
 
-    # --- Top x-axis: target contig names ---
-    ax2_top = ax.secondary_xaxis("top")
-    max_ticks = 50
+    tick_font_size = 6.5 * (figsize[0] / 12.0)  # scale font with figure size
+    for i in range(1, 10):
+        tick_x = 500.0 / 10 * i
+        # Tick line from y=0 to y=5
+        ax_bottom.plot([tick_x, tick_x], [0, 5], color="black", linewidth=0.5)
+        # Label
+        bp_val = t_total_len / 10 * i
+        label = _format_bp(bp_val, t_total_len)
+        ax_bottom.text(tick_x, 15, label, ha="center", va="center",
+                       fontsize=tick_font_size, fontfamily="sans-serif")
+
+    ax_bottom.set_xticks([])
+    ax_bottom.set_yticks([])
+
+    # --- Left axis: Mbp scale (9 tick marks, rotated) ---
+    ax_left = fig.add_axes([0, axis_frac, axis_frac, plot_frac])
+    ax_left.set_xlim(0, 20)
+    ax_left.set_ylim(0, 500)
+    ax_left.set_facecolor(axis_bg_color)
+    for spine in ax_left.spines.values():
+        spine.set_visible(False)
+
+    for i in range(1, 10):
+        # D-Genies left axis: ticks go from left edge, labels at tick positions
+        # Y is inverted in the plot, so genomic position increases downward in SVG
+        # but we want it to match: bottom = 0, top = max
+        tick_y = 500.0 / 10 * i
+        # Tick line from x=15 to x=20 (right edge)
+        ax_left.plot([15, 20], [tick_y, tick_y], color="black", linewidth=0.5)
+        # Label - D-Genies shows values increasing from bottom to top
+        bp_val = q_total_len / 10 * i
+        label = _format_bp(bp_val, q_total_len)
+        ax_left.text(12, tick_y, label, ha="center", va="center",
+                     fontsize=tick_font_size, fontfamily="sans-serif",
+                     rotation=90)
+
+    ax_left.set_xticks([])
+    ax_left.set_yticks([])
+
+    # --- Top axis: target contig/chromosome names ---
+    ax_top = fig.add_axes([axis_frac, axis_frac + plot_frac, plot_frac, axis_frac])
+    ax_top.set_xlim(0, 500)
+    ax_top.set_ylim(0, 20)
+    ax_top.set_facecolor(axis_bg_color)
+    for spine in ax_top.spines.values():
+        spine.set_visible(False)
+
+    name_font_size = 6.0 * (figsize[0] / 12.0)
+    title_font_size = 6.0 * (figsize[0] / 12.0)
+
+    # Genome name (title) at top center, italic
+    ax_top.text(250, 7.5, t_name, ha="center", va="center",
+                fontsize=title_font_size, fontfamily="sans-serif",
+                fontstyle="italic")
+
+    # Contig names and separators
+    max_labels = 80
     non_mix_t = [(cname, t_abs_start[cname], t_contigs[cname])
                  for cname in t_order if not cname.startswith("###MIX###")]
-    if len(non_mix_t) <= max_ticks:
-        top_pos = [(a + l / 2) / t_total_len for _, a, l in non_mix_t]
-        top_lbl = [c for c, _, _ in non_mix_t]
-        ax2_top.set_xticks(top_pos)
-        ax2_top.set_xticklabels(top_lbl, rotation=90, fontsize=5, ha="center")
-    else:
-        ax2_top.set_xticks([])
+    mix_t = [(cname, t_abs_start[cname], t_contigs[cname])
+             for cname in t_order if cname.startswith("###MIX###")]
 
-    # --- Right y-axis: query name label ---
-    ax2_right = ax.secondary_yaxis("right")
-    ax2_right.set_yticks([0.5])
-    ax2_right.set_yticklabels([q_name], fontsize=8, rotation=-90, va="center")
+    # Draw MIX zone rectangles
+    for cname, start, length in mix_t:
+        x0 = start / t_total_len * 500
+        x1 = (start + length) / t_total_len * 500
+        ax_top.fill_between([x0, x1], 12, 20, color=mix_color, linewidth=0)
 
-    # --- Axis labels ---
-    ax.set_xlabel(f"Target: {t_name}", fontsize=10)
+    # Draw contig zone separators and names
+    running_pos = 0
+    for idx, cname in enumerate(t_order):
+        start = t_abs_start[cname]
+        length = t_contigs[cname]
+        end = start + length
 
-    title = f"{q_name} vs {t_name}"
-    if sampled:
-        title += " (sampled)"
-    ax.set_title(title, fontsize=11, pad=35)
+        # Zone separator (vertical line between zones)
+        if idx > 0:
+            sep_x = start / t_total_len * 500
+            if not cname.startswith("###MIX###"):
+                ax_top.plot([sep_x, sep_x], [12, 20], color="black", linewidth=0.5)
 
-    # --- Legend ---
-    legend_handles = []
-    for idy_class in [3, 2, 1, 0]:
-        class_matches = [m for m in matches if m["idy_class"] == idy_class]
-        if class_matches:
-            legend_handles.append(
-                mpatches.Patch(color=IDY_COLORS[idy_class],
-                               label=IDY_LABELS[idy_class]))
-    if legend_handles:
-        ax.legend(handles=legend_handles, loc="upper right", fontsize=6,
-                  framealpha=0.8)
+        # Contig name (skip MIX zones, skip if too many)
+        if not cname.startswith("###MIX###") and len(non_mix_t) <= max_labels:
+            center_x = (start + length / 2) / t_total_len * 500
+            # Truncate long names
+            display_name = cname
+            zone_width = length / t_total_len * 500
+            if len(display_name) > 3 and zone_width < len(display_name) * 1.5:
+                max_chars = max(3, int(zone_width / 1.5))
+                if len(display_name) > max_chars:
+                    display_name = display_name[:max_chars-3] + "..."
+            ax_top.text(center_x, 17, display_name, ha="center", va="center",
+                        fontsize=name_font_size, fontfamily="sans-serif",
+                        clip_on=True)
 
-    plt.tight_layout()
-    fig.savefig(out_path, dpi=dpi, bbox_inches="tight", facecolor="white")
+    # --- Right axis: query contig/chromosome names ---
+    ax_right = fig.add_axes([axis_frac + plot_frac, axis_frac, axis_frac, plot_frac])
+    ax_right.set_xlim(0, 20)
+    ax_right.set_ylim(0, 500)
+    ax_right.set_facecolor(axis_bg_color)
+    for spine in ax_right.spines.values():
+        spine.set_visible(False)
+
+    # Genome name (title) at right center, italic, rotated 90 degrees
+    ax_right.text(7.5, 250, q_name, ha="center", va="center",
+                  fontsize=title_font_size, fontfamily="sans-serif",
+                  fontstyle="italic", rotation=90)
+
+    # Query contig names and separators
+    non_mix_q = [(cname, q_abs_start[cname], q_contigs[cname])
+                 for cname in q_order if not cname.startswith("###MIX###")]
+    mix_q = [(cname, q_abs_start[cname], q_contigs[cname])
+             for cname in q_order if cname.startswith("###MIX###")]
+
+    # Draw MIX zone rectangles
+    for cname, start, length in mix_q:
+        # Y inverted to match plot
+        y0 = (1.0 - (start + length) / q_total_len) * 500
+        y1 = (1.0 - start / q_total_len) * 500
+        ax_right.fill_between([0, 8], y0, y1, color=mix_color, linewidth=0)
+
+    # Draw contig zone separators and names
+    for idx, cname in enumerate(q_order):
+        start = q_abs_start[cname]
+        length = q_contigs[cname]
+
+        # Zone separator (horizontal line between zones)
+        if idx > 0:
+            sep_y = (1.0 - start / q_total_len) * 500
+            if not cname.startswith("###MIX###"):
+                ax_right.plot([0, 8], [sep_y, sep_y], color="black", linewidth=0.5)
+
+        # Contig name (skip MIX zones, skip if too many)
+        if not cname.startswith("###MIX###") and len(non_mix_q) <= max_labels:
+            center_y = (1.0 - (start + length / 2) / q_total_len) * 500
+            display_name = cname
+            zone_height = length / q_total_len * 500
+            if len(display_name) > 3 and zone_height < len(display_name) * 1.5:
+                max_chars = max(3, int(zone_height / 1.5))
+                if len(display_name) > max_chars:
+                    display_name = display_name[:max_chars-3] + "..."
+            ax_right.text(17, center_y, display_name, ha="center", va="center",
+                          fontsize=name_font_size, fontfamily="sans-serif",
+                          rotation=90, clip_on=True)
+
+    ax_right.set_xticks([])
+    ax_right.set_yticks([])
+
+    # --- Corner backgrounds (fill the 4 corners with axis bg color) ---
+    for corner_pos in [(0, 0, axis_frac, axis_frac),
+                       (0, axis_frac + plot_frac, axis_frac, axis_frac),
+                       (axis_frac + plot_frac, 0, axis_frac, axis_frac),
+                       (axis_frac + plot_frac, axis_frac + plot_frac, axis_frac, axis_frac)]:
+        ax_corner = fig.add_axes(corner_pos)
+        ax_corner.set_facecolor(axis_bg_color)
+        ax_corner.set_xticks([]); ax_corner.set_yticks([])
+        for spine in ax_corner.spines.values():
+            spine.set_visible(False)
+
+    # --- Save ---
+    fig.savefig(out_path, dpi=dpi, facecolor="white", pad_inches=0)
     plt.close(fig)
-    print(f"  Dot plot written: {out_path}")
+    print(f"  Dot plot written: {out_path} ({int(figsize[0]*dpi)}x{int(figsize[1]*dpi)} px)")
 
 
 # ---------------------------------------------------------------------------
@@ -804,11 +970,11 @@ def main():
                         help="Sort query contigs to match target chromosome order")
     parser.add_argument("--no-merge-small", action="store_true",
                         help="Do NOT merge small contigs into ###MIX### groups")
-    parser.add_argument("--dpi", type=int, default=300,
-                        help="DPI for PNG output (default: 300)")
+    parser.add_argument("--dpi", type=int, default=100,
+                        help="DPI for PNG output (default: 100, gives 5000x5000px)")
     parser.add_argument("--figsize", type=float, nargs=2, default=None,
                         metavar=("WIDTH", "HEIGHT"),
-                        help="Figure size in inches (default: 12 12)")
+                        help="Figure size in inches (default: 50 50, gives 5000x5000px at 100dpi)")
     parser.add_argument("--presorted", action="store_true",
                         help="PAF is already sorted by significance (skip re-sorting)")
     parser.add_argument("--no-plot", action="store_true",
