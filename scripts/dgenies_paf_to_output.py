@@ -178,6 +178,36 @@ def merge_small_contigs(order, contigs, abs_start, total_len):
     return new_order, new_contigs, new_abs_start, contig_rename
 
 
+def rebuild_full_abs_start(merged_order, merged_abs_start, orig_order,
+                           orig_contigs, contig_rename):
+    """Rebuild abs_start for ALL original contig names from a merged/sorted order.
+
+    After merging small contigs into ###MIX### groups and/or sorting,
+    the abs_start dict only has group names (not individual member names).
+    This function computes the correct absolute position for every original
+    contig by determining its offset within its MIX group.
+
+    For non-merged contigs, the position is taken directly from merged_abs_start.
+    """
+    # Build MIX group membership preserving original contig order within groups
+    mix_members = defaultdict(list)
+    for name in orig_order:
+        renamed = contig_rename.get(name, name)
+        if renamed.startswith("###MIX###"):
+            mix_members[renamed].append(name)
+
+    full = {}
+    for name in merged_order:
+        if name in mix_members:
+            offset = merged_abs_start[name]
+            for member in mix_members[name]:
+                full[member] = offset
+                offset += orig_contigs[member]
+        else:
+            full[name] = merged_abs_start[name]
+    return full
+
+
 # ---------------------------------------------------------------------------
 # PAF sorting by significance (matches D-Genies Sorter)
 # ---------------------------------------------------------------------------
@@ -833,8 +863,10 @@ def main():
             t_abs_start_orig=t_abs_start_orig)
         # Update q_reversed with sorting results
         q_reversed.update(q_reversed_new)
-        # Re-parse with new absolute starts (update q_abs_start_orig too)
-        q_abs_start_orig = dict(q_abs_start)
+        # Rebuild full abs_start with positions for ALL original contig names
+        # (including individual contigs within ###MIX### groups)
+        q_abs_start_orig = rebuild_full_abs_start(
+            q_order, q_abs_start, q_order_orig, q_contigs, q_contig_rename)
         print("Re-parsing PAF with sorted coordinates...")
         matches, q_seen, t_seen, sampled = parse_paf(
             args.paf, q_abs_start, t_abs_start, q_contigs_plot, t_contigs_plot,
