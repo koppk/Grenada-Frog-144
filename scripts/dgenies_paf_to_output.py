@@ -11,17 +11,20 @@ Replicates the downloadable outputs from the D-Genies web interface:
 Designed to handle large queries with many small/repetitive contigs that
 cannot load in D-Genies' browser-based visualization.
 
-Note: The PAF file must be pre-sorted by significance externally
-(e.g. using awk/sort in bash). This script does NO internal sorting.
+PAF sorting is parallelized (default 12 threads). Use --presorted
+to skip sorting if the PAF is already sorted (e.g. map.paf from D-Genies).
 
 Usage:
-    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/
+    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/
 
     # With query contig reordering (gravity-based, to match target):
-    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --sort
+    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --sort
 
-    # Limit lines read (for huge PAF files):
-    python3 dgenies_paf_to_output.py --paf sorted.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --max-lines 200000
+    # Skip sorting (PAF already sorted, e.g. from D-Genies):
+    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --presorted
+
+    # Control thread count:
+    python3 dgenies_paf_to_output.py --paf map.paf --query-idx query.idx --target-idx target.idx -o output_dir/ --threads 14
 
 Requires: Python 3.7+, matplotlib, numpy
 """
@@ -32,6 +35,7 @@ import os
 import sys
 from collections import OrderedDict, defaultdict
 from math import sqrt
+from multiprocessing import Pool
 
 import matplotlib
 matplotlib.use("Agg")
@@ -207,6 +211,66 @@ def rebuild_full_abs_start(merged_order, merged_abs_start, orig_order,
     return full
 
 
+# ---------------------------------------------------------------------------
+# PAF sorting by significance (parallelized)
+# ---------------------------------------------------------------------------
+
+def _score_line(line):
+    """Compute significance score for a single PAF line.
+    Returns (score, line) or None if line is invalid."""
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 12:
+        return None
+    q_start = int(parts[2])
+    q_end = int(parts[3])
+    t_start = int(parts[7])
+    t_end = int(parts[8])
+    matches = int(parts[9])
+    block_len = int(parts[10])
+    if block_len == 0:
+        return (0.0, line)
+    euclidean = sqrt((q_end - q_start) ** 2 + (t_end - t_start) ** 2)
+    identity = matches / block_len
+    return (euclidean * identity, line)
+
+
+def _score_chunk(chunk):
+    """Score a chunk of lines. Used by multiprocessing."""
+    results = []
+    for line in chunk:
+        r = _score_line(line)
+        if r is not None:
+            results.append(r)
+    return results
+
+
+def sort_paf_lines(lines, threads=1):
+    """Sort PAF lines by descending significance score.
+
+    Uses multiprocessing to parallelize the scoring step.
+    """
+    n = len(lines)
+    print(f"  Sorting {n:,} PAF lines using {threads} threads...")
+
+    if threads <= 1:
+        scored = []
+        for line in lines:
+            r = _score_line(line)
+            if r is not None:
+                scored.append(r)
+    else:
+        chunk_size = max(1000, n // threads)
+        chunks = [lines[i:i + chunk_size]
+                  for i in range(0, n, chunk_size)]
+        scored = []
+        with Pool(processes=threads) as pool:
+            for chunk_result in pool.map(_score_chunk, chunks):
+                scored.extend(chunk_result)
+
+    print(f"  Scored {len(scored):,} lines, now sorting...")
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [s[1] for s in scored]
+
 
 # ---------------------------------------------------------------------------
 # PAF parsing
@@ -243,11 +307,10 @@ IDY_LABELS = {
 def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
               q_contig_rename=None, t_contig_rename=None,
               q_abs_start_orig=None, t_abs_start_orig=None,
-              max_lines=None):
+              max_lines=None, threads=1, presorted=False):
     """Parse a PAF file and return match data.
 
-    The PAF is expected to already be sorted by significance externally
-    (e.g. using bash/awk/samtools). No internal sorting is performed.
+    Sorts PAF lines by significance (parallelized) unless presorted=True.
 
     Args:
         q_abs_start, t_abs_start: merged abs_start dicts (for display grouping)
@@ -279,6 +342,10 @@ def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
             if line.startswith("#") or not line.strip():
                 continue
             raw_lines.append(line)
+
+    # Sort by significance (parallelized) unless already sorted
+    if not presorted:
+        raw_lines = sort_paf_lines(raw_lines, threads=threads)
 
     sampled = False
     if max_lines and len(raw_lines) > max_lines:
@@ -942,6 +1009,10 @@ def main():
     parser.add_argument("--figsize", type=float, nargs=2, default=None,
                         metavar=("WIDTH", "HEIGHT"),
                         help="Figure size in inches (default: 50 50, gives 5000x5000px at 100dpi)")
+    parser.add_argument("--threads", type=int, default=12,
+                        help="Threads for PAF sorting (default: 12)")
+    parser.add_argument("--presorted", action="store_true",
+                        help="PAF is already sorted (skip sorting step)")
     parser.add_argument("--no-plot", action="store_true",
                         help="Skip dot plot generation (only produce text files)")
     args = parser.parse_args()
@@ -984,7 +1055,8 @@ def main():
     matches, q_seen, t_seen, sampled = parse_paf(
         args.paf, q_abs_start, t_abs_start, q_contigs, t_contigs,
         q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
-        max_lines=args.max_lines)
+        max_lines=args.max_lines,
+        threads=args.threads, presorted=args.presorted)
     print(f"  Parsed {len(matches)} alignment matches")
     if sampled:
         print(f"  (sampled to {args.max_lines} lines)")
@@ -1037,7 +1109,8 @@ def main():
             q_contigs_plot, t_contigs_plot,
             q_contig_rename, t_contig_rename,
             q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
-            max_lines=args.max_lines)
+            max_lines=args.max_lines,
+            threads=args.threads, presorted=args.presorted)
         if args.remove_noise:
             matches = remove_noise(matches)
         print(f"  {len(matches)} matches after re-parse")
