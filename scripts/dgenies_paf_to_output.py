@@ -244,8 +244,15 @@ IDY_LABELS = {
 
 def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
               q_contig_rename=None, t_contig_rename=None,
+              q_abs_start_orig=None, t_abs_start_orig=None,
               max_lines=None, presorted=False):
     """Parse a PAF file and return match data.
+
+    Args:
+        q_abs_start, t_abs_start: merged abs_start dicts (for display grouping)
+        q_abs_start_orig, t_abs_start_orig: original (pre-merge) abs_start
+            dicts for correct coordinate computation. If not provided, falls
+            back to q_abs_start/t_abs_start.
 
     Returns:
         matches: list of dicts with keys x1, x2, y1, y2, idy, idy_class,
@@ -258,6 +265,12 @@ def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
         q_contig_rename = {}
     if t_contig_rename is None:
         t_contig_rename = {}
+
+    # Use original abs_start for coordinate lookups (critical when contigs
+    # are merged into ###MIX### groups - the merged dict only has group
+    # starts, not individual contig positions)
+    q_abs_lookup = q_abs_start_orig if q_abs_start_orig else q_abs_start
+    t_abs_lookup = t_abs_start_orig if t_abs_start_orig else t_abs_start
 
     raw_lines = []
     with open(paf_path) as fh:
@@ -286,16 +299,10 @@ def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
 
         q_name_orig = parts[0]
         t_name_orig = parts[5]
-        q_name = q_contig_rename.get(q_name_orig, q_name_orig)
-        t_name = t_contig_rename.get(t_name_orig, t_name_orig)
 
-        # Skip if contig not in index (shouldn't happen, but be safe)
-        if q_name not in q_abs_start or t_name not in t_abs_start:
-            # Try original names
-            if q_name_orig not in q_abs_start or t_name_orig not in t_abs_start:
-                continue
-            q_name = q_name_orig
-            t_name = t_name_orig
+        # Skip if contig not in original index
+        if q_name_orig not in q_abs_lookup or t_name_orig not in t_abs_lookup:
+            continue
 
         strand = 1 if parts[4] == "+" else -1
         q_start = int(parts[2])
@@ -310,10 +317,11 @@ def parse_paf(paf_path, q_abs_start, t_abs_start, q_contigs, t_contigs,
 
         idy = n_matches / block_len
 
-        # Compute absolute coordinates
+        # Compute absolute coordinates using ORIGINAL contig positions
+        # (not merged MIX group positions)
         # x = target, y = query (D-Genies convention)
-        q_abs = q_abs_start[q_name]
-        t_abs = t_abs_start[t_name]
+        q_abs = q_abs_lookup[q_name_orig]
+        t_abs = t_abs_lookup[t_name_orig]
 
         if strand == 1:
             x1 = t_start + t_abs
@@ -572,6 +580,21 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
 
+    # Compute pixel size in normalized coords so we can ensure minimum
+    # visible segment length (1 pixel on the rendered image)
+    plot_pixels = figsize[0] * dpi
+    min_seg_len = 2.0 / plot_pixels  # minimum 2 pixels in normalized coords
+
+    # Adaptive line width: thicker when fewer matches, thinner when dense
+    if len(matches) < 500:
+        lw = 1.5
+    elif len(matches) < 5000:
+        lw = 1.0
+    elif len(matches) < 50000:
+        lw = 0.6
+    else:
+        lw = 0.3
+
     # --- Draw alignment matches as line segments, grouped by identity class ---
     for idy_class in [0, 1, 2, 3]:
         class_matches = [m for m in matches if m["idy_class"] == idy_class]
@@ -586,10 +609,29 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
             # Invert Y axis (D-Genies convention: origin at top-left)
             y1_n = 1.0 - (m["y1"] / q_total_len)
             y2_n = 1.0 - (m["y2"] / q_total_len)
+
+            # Ensure minimum visible segment length: extend sub-pixel
+            # segments so they render as visible dots/short lines
+            dx = x2_n - x1_n
+            dy = y2_n - y1_n
+            seg_len = sqrt(dx * dx + dy * dy)
+            if seg_len < min_seg_len and seg_len > 0:
+                scale = min_seg_len / seg_len
+                cx = (x1_n + x2_n) / 2
+                cy = (y1_n + y2_n) / 2
+                x1_n = cx - dx * scale / 2
+                x2_n = cx + dx * scale / 2
+                y1_n = cy - dy * scale / 2
+                y2_n = cy + dy * scale / 2
+            elif seg_len == 0:
+                # Zero-length: make a small cross mark
+                x1_n -= min_seg_len / 2
+                x2_n += min_seg_len / 2
+
             segments.append([(x1_n, y1_n), (x2_n, y2_n)])
 
         lc = LineCollection(segments, colors=IDY_COLORS[idy_class],
-                            linewidths=0.4, alpha=0.85,
+                            linewidths=lw, alpha=0.85,
                             label=IDY_LABELS[idy_class])
         ax.add_collection(lc)
 
@@ -771,6 +813,7 @@ def main():
     matches, q_seen, t_seen, sampled = parse_paf(
         args.paf, q_abs_start, t_abs_start, q_contigs_plot, t_contigs_plot,
         q_contig_rename, t_contig_rename,
+        q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
         max_lines=args.max_lines, presorted=args.presorted)
     print(f"  Parsed {len(matches)} alignment matches")
     if sampled:
@@ -790,11 +833,13 @@ def main():
             t_abs_start_orig=t_abs_start_orig)
         # Update q_reversed with sorting results
         q_reversed.update(q_reversed_new)
-        # Re-parse with new absolute starts
+        # Re-parse with new absolute starts (update q_abs_start_orig too)
+        q_abs_start_orig = dict(q_abs_start)
         print("Re-parsing PAF with sorted coordinates...")
         matches, q_seen, t_seen, sampled = parse_paf(
             args.paf, q_abs_start, t_abs_start, q_contigs_plot, t_contigs_plot,
             q_contig_rename, t_contig_rename,
+            q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
             max_lines=args.max_lines, presorted=args.presorted)
         if args.remove_noise:
             matches = remove_noise(matches)
