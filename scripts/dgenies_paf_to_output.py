@@ -812,37 +812,16 @@ def main():
         t_name, t_order, t_contigs, t_reversed, t_abs_start, t_total = build_index_from_paf(args.paf, "target")
     print(f"  Target: {t_name} - {len(t_order)} contigs, total {t_total:,} bp")
 
-    # --- Preserve original indexes (before merging) for sort/association ---
+    # --- Preserve original indexes ---
     q_order_orig = list(q_order)
+    t_order_orig = list(t_order)
     q_abs_start_orig = dict(q_abs_start)
     t_abs_start_orig = dict(t_abs_start)
 
-    # --- Merge small contigs ---
-    q_contig_rename = {}
-    t_contig_rename = {}
-    if not args.no_merge_small:
-        q_order, q_contigs_m, q_abs_start, q_contig_rename = merge_small_contigs(
-            q_order, q_contigs, q_abs_start, q_total)
-        t_order, t_contigs_m, t_abs_start, t_contig_rename = merge_small_contigs(
-            t_order, t_contigs, t_abs_start, t_total)
-        n_q_merged = sum(1 for v in q_contig_rename.values() if v.startswith("###MIX###"))
-        n_t_merged = sum(1 for v in t_contig_rename.values() if v.startswith("###MIX###"))
-        if n_q_merged > 0:
-            print(f"  Merged {n_q_merged} small query contigs into MIX groups")
-        if n_t_merged > 0:
-            print(f"  Merged {n_t_merged} small target contigs into MIX groups")
-        # Use merged contigs dict for plotting but keep original for association table
-        q_contigs_plot = q_contigs_m
-        t_contigs_plot = t_contigs_m
-    else:
-        q_contigs_plot = q_contigs
-        t_contigs_plot = t_contigs
-
-    # --- Parse PAF ---
-    print(f"Parsing PAF file...")
+    # --- Parse PAF (first pass, using original indexes for sorting/stats) ---
+    print("Parsing PAF file...")
     matches, q_seen, t_seen, sampled = parse_paf(
-        args.paf, q_abs_start, t_abs_start, q_contigs_plot, t_contigs_plot,
-        q_contig_rename, t_contig_rename,
+        args.paf, q_abs_start, t_abs_start, q_contigs, t_contigs,
         q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
         max_lines=args.max_lines, presorted=args.presorted)
     print(f"  Parsed {len(matches)} alignment matches")
@@ -854,22 +833,47 @@ def main():
         matches = remove_noise(matches)
         print(f"  After noise removal: {len(matches)} matches")
 
-    # --- Optional sorting ---
+    # --- Optional sorting (BEFORE merging, so gravity works on real names) ---
     if args.sort:
         print("Sorting query contigs to match target order...")
-        q_order, q_contigs_plot, q_abs_start, q_reversed_new = sort_query_contigs(
-            matches, q_order, q_contigs_plot, q_abs_start,
-            t_order, t_contigs_plot, t_abs_start, t_total,
+        q_order, _, q_abs_start, q_reversed_new = sort_query_contigs(
+            matches, q_order, q_contigs, q_abs_start,
+            t_order, t_contigs, t_abs_start, t_total,
             t_abs_start_orig=t_abs_start_orig)
-        # Update q_reversed with sorting results
         q_reversed.update(q_reversed_new)
-        # Rebuild full abs_start with positions for ALL original contig names
-        # (including individual contigs within ###MIX### groups)
-        q_abs_start_orig = rebuild_full_abs_start(
-            q_order, q_abs_start, q_order_orig, q_contigs, q_contig_rename)
+        q_abs_start_orig = dict(q_abs_start)
+        q_order_orig = list(q_order)  # update orig to sorted order for merge
+
+    # --- Merge small contigs (after sorting) ---
+    q_contig_rename = {}
+    t_contig_rename = {}
+    if not args.no_merge_small:
+        q_order, q_contigs_m, q_abs_start_merged, q_contig_rename = merge_small_contigs(
+            q_order, q_contigs, q_abs_start, q_total)
+        t_order, t_contigs_m, t_abs_start_merged, t_contig_rename = merge_small_contigs(
+            t_order, t_contigs, t_abs_start, t_total)
+        n_q_merged = sum(1 for v in q_contig_rename.values() if v.startswith("###MIX###"))
+        n_t_merged = sum(1 for v in t_contig_rename.values() if v.startswith("###MIX###"))
+        if n_q_merged > 0:
+            print(f"  Merged {n_q_merged} small query contigs into MIX groups")
+        if n_t_merged > 0:
+            print(f"  Merged {n_t_merged} small target contigs into MIX groups")
+        q_contigs_plot = q_contigs_m
+        t_contigs_plot = t_contigs_m
+        q_abs_start_plot = q_abs_start_merged
+        t_abs_start_plot = t_abs_start_merged
+    else:
+        q_contigs_plot = q_contigs
+        t_contigs_plot = t_contigs
+        q_abs_start_plot = q_abs_start
+        t_abs_start_plot = t_abs_start
+
+    # --- Re-parse PAF if sorted (with new coordinates) ---
+    if args.sort:
         print("Re-parsing PAF with sorted coordinates...")
         matches, q_seen, t_seen, sampled = parse_paf(
-            args.paf, q_abs_start, t_abs_start, q_contigs_plot, t_contigs_plot,
+            args.paf, q_abs_start_plot, t_abs_start_plot,
+            q_contigs_plot, t_contigs_plot,
             q_contig_rename, t_contig_rename,
             q_abs_start_orig=q_abs_start_orig, t_abs_start_orig=t_abs_start_orig,
             max_lines=args.max_lines, presorted=args.presorted)
@@ -884,13 +888,13 @@ def main():
     if not args.no_plot:
         plot_path = os.path.join(args.outdir,
                                  f"map_{q_name}_to_{t_name}.png".replace(" ", "_"))
-        draw_dotplot(matches, q_order, q_contigs_plot, q_abs_start, q_total,
-                     t_order, t_contigs_plot, t_abs_start, t_total,
+        draw_dotplot(matches, q_order, q_contigs_plot, q_abs_start_plot, q_total,
+                     t_order, t_contigs_plot, t_abs_start_plot, t_total,
                      q_name, t_name, plot_path, dpi=args.dpi,
                      figsize=tuple(args.figsize) if args.figsize else None,
                      sampled=sampled)
 
-    # 2. Association table (use original contigs/abs_start, not merged)
+    # 2. Association table (use original contigs, not merged)
     assoc_path = os.path.join(args.outdir,
                               f"{q_name}_{t_name}_assoc.tsv".replace(" ", "_"))
     assoc_rows = build_association_table(
