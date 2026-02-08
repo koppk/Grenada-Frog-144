@@ -597,25 +597,39 @@ def write_no_match_list(names, out_path, label):
 # Output: Dot plot PNG
 # ---------------------------------------------------------------------------
 
+def _format_bp(val, total_len):
+    """Format a base-pair value for axis tick labels."""
+    if total_len >= 1e9:
+        return f"{val/1e6:.0f} M"
+    elif total_len >= 1e6:
+        return f"{val/1e6:.1f} M"
+    elif total_len >= 1e3:
+        return f"{val/1e3:.0f} K"
+    return str(int(val))
+
+
 def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
                  t_order, t_contigs, t_abs_start, t_total_len,
                  q_name, t_name, out_path, dpi=300, figsize=None,
                  sampled=False):
     """Draw a D-Genies-style dot plot and save as PNG.
 
-    Target (reference) on X-axis, Query on Y-axis (inverted like D-Genies).
+    Layout matches D-Genies:
+      - Target contig names on TOP x-axis, Mbp scale on BOTTOM x-axis
+      - Query name on RIGHT y-axis, Mbp scale on LEFT y-axis
+      - Origin at bottom-left, diagonal goes bottom-left to top-right
+      - Gray contig-map bars on top and right edges
     """
     if figsize is None:
         figsize = (12, 12)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-    # Compute pixel size in normalized coords so we can ensure minimum
-    # visible segment length (1 pixel on the rendered image)
+    # Compute pixel size for minimum visible segment length
     plot_pixels = figsize[0] * dpi
-    min_seg_len = 2.0 / plot_pixels  # minimum 2 pixels in normalized coords
+    min_seg_len = 2.0 / plot_pixels
 
-    # Adaptive line width: thicker when fewer matches, thinner when dense
+    # Adaptive line width
     if len(matches) < 500:
         lw = 1.5
     elif len(matches) < 5000:
@@ -633,15 +647,13 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
 
         segments = []
         for m in class_matches:
-            # Normalize to 0..1 scale
+            # Normalize to 0..1 scale (NO Y inversion - origin at bottom-left)
             x1_n = m["x1"] / t_total_len
             x2_n = m["x2"] / t_total_len
-            # Invert Y axis (D-Genies convention: origin at top-left)
-            y1_n = 1.0 - (m["y1"] / q_total_len)
-            y2_n = 1.0 - (m["y2"] / q_total_len)
+            y1_n = m["y1"] / q_total_len
+            y2_n = m["y2"] / q_total_len
 
-            # Ensure minimum visible segment length: extend sub-pixel
-            # segments so they render as visible dots/short lines
+            # Ensure minimum visible segment length
             dx = x2_n - x1_n
             dy = y2_n - y1_n
             seg_len = sqrt(dx * dx + dy * dy)
@@ -654,7 +666,6 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
                 y1_n = cy - dy * scale / 2
                 y2_n = cy + dy * scale / 2
             elif seg_len == 0:
-                # Zero-length: make a small cross mark
                 x1_n -= min_seg_len / 2
                 x2_n += min_seg_len / 2
 
@@ -666,7 +677,6 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
         ax.add_collection(lc)
 
     # --- Draw contig boundaries ---
-    # Target (x-axis) boundaries
     for cname in t_order:
         x = (t_abs_start[cname] + t_contigs[cname]) / t_total_len
         if x < 1.0:
@@ -674,57 +684,77 @@ def draw_dotplot(matches, q_order, q_contigs, q_abs_start, q_total_len,
             ax.axvline(x=x, color="#888888" if is_mix else "#cccccc",
                        linewidth=0.3, linestyle="-")
 
-    # Query (y-axis) boundaries
     for cname in q_order:
-        y = 1.0 - (q_abs_start[cname] + q_contigs[cname]) / q_total_len
-        if y > 0.0:
+        y = (q_abs_start[cname] + q_contigs[cname]) / q_total_len
+        if y < 1.0:
             is_mix = cname.startswith("###MIX###")
             ax.axhline(y=y, color="#888888" if is_mix else "#cccccc",
                        linewidth=0.3, linestyle="-")
 
-    # --- Axis labels (show contig names if not too many) ---
-    max_ticks = 50
+    # --- Draw gray contig-map bars (top edge for target, right edge for query) ---
+    bar_width = 0.015  # fraction of plot
+    for cname in t_order:
+        x0 = t_abs_start[cname] / t_total_len
+        x1 = (t_abs_start[cname] + t_contigs[cname]) / t_total_len
+        is_mix = cname.startswith("###MIX###")
+        color = "#cccccc" if is_mix else "#b0b0b0"
+        ax.fill_between([x0, x1], 1.0, 1.0 + bar_width,
+                        color=color, linewidth=0.2, edgecolor="#999999",
+                        clip_on=False)
 
-    # Target x-axis ticks
-    if len(t_order) <= max_ticks:
-        xtick_pos = []
-        xtick_labels = []
-        for cname in t_order:
-            if cname.startswith("###MIX###"):
-                continue
-            mid = (t_abs_start[cname] + t_contigs[cname] / 2) / t_total_len
-            xtick_pos.append(mid)
-            xtick_labels.append(cname)
-        ax.set_xticks(xtick_pos)
-        ax.set_xticklabels(xtick_labels, rotation=90, fontsize=5, ha="center")
-    else:
-        ax.set_xticks([])
-
-    # Query y-axis ticks
-    if len(q_order) <= max_ticks:
-        ytick_pos = []
-        ytick_labels = []
-        for cname in q_order:
-            if cname.startswith("###MIX###"):
-                continue
-            mid = 1.0 - (q_abs_start[cname] + q_contigs[cname] / 2) / q_total_len
-            ytick_pos.append(mid)
-            ytick_labels.append(cname)
-        ax.set_yticks(ytick_pos)
-        ax.set_yticklabels(ytick_labels, fontsize=5)
-    else:
-        ax.set_yticks([])
+    for cname in q_order:
+        y0 = q_abs_start[cname] / q_total_len
+        y1 = (q_abs_start[cname] + q_contigs[cname]) / q_total_len
+        is_mix = cname.startswith("###MIX###")
+        color = "#cccccc" if is_mix else "#b0b0b0"
+        ax.fill_between([1.0, 1.0 + bar_width], y0, y1,
+                        color=color, linewidth=0.2, edgecolor="#999999",
+                        clip_on=False)
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_xlabel(f"Target: {t_name}", fontsize=10)
-    ax.set_ylabel(f"Query: {q_name}", fontsize=10)
     ax.set_aspect("equal")
 
-    title = f"Dot plot: {q_name} vs {t_name}"
+    # --- Bottom x-axis: Mbp scale ---
+    n_ticks = 10
+    bp_step_x = t_total_len / n_ticks
+    xtick_vals = [i * bp_step_x for i in range(n_ticks + 1)]
+    ax.set_xticks([v / t_total_len for v in xtick_vals])
+    ax.set_xticklabels([_format_bp(v, t_total_len) for v in xtick_vals],
+                       fontsize=6)
+
+    # --- Left y-axis: Mbp scale ---
+    bp_step_y = q_total_len / n_ticks
+    ytick_vals = [i * bp_step_y for i in range(n_ticks + 1)]
+    ax.set_yticks([v / q_total_len for v in ytick_vals])
+    ax.set_yticklabels([_format_bp(v, q_total_len) for v in ytick_vals],
+                       fontsize=6)
+
+    # --- Top x-axis: target contig names ---
+    ax2_top = ax.secondary_xaxis("top")
+    max_ticks = 50
+    non_mix_t = [(cname, t_abs_start[cname], t_contigs[cname])
+                 for cname in t_order if not cname.startswith("###MIX###")]
+    if len(non_mix_t) <= max_ticks:
+        top_pos = [(a + l / 2) / t_total_len for _, a, l in non_mix_t]
+        top_lbl = [c for c, _, _ in non_mix_t]
+        ax2_top.set_xticks(top_pos)
+        ax2_top.set_xticklabels(top_lbl, rotation=90, fontsize=5, ha="center")
+    else:
+        ax2_top.set_xticks([])
+
+    # --- Right y-axis: query name label ---
+    ax2_right = ax.secondary_yaxis("right")
+    ax2_right.set_yticks([0.5])
+    ax2_right.set_yticklabels([q_name], fontsize=8, rotation=-90, va="center")
+
+    # --- Axis labels ---
+    ax.set_xlabel(f"Target: {t_name}", fontsize=10)
+
+    title = f"{q_name} vs {t_name}"
     if sampled:
         title += " (sampled)"
-    ax.set_title(title, fontsize=12)
+    ax.set_title(title, fontsize=11, pad=35)
 
     # --- Legend ---
     legend_handles = []
