@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the article below."
+title: "Pristimantis euphronides genome project — scripts repository"
+type: software
+license: GPL-3.0-or-later
+repository-code: "https://github.com/koppk/Grenada-Frog-144"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.15298547"
+    description: "Zenodo data deposit"
+preferred-citation:
+  type: article
+  title: "From Field to Genome: Non-Lethal, On-Site Nanopore-Only Assembly of the Endangered Grenada Frog (Pristimantis euphronides)"
+  journal: "BMC Genomics"
+  status: in-preparation
+  authors:
+    - family-names: Kopp
+      given-names: Katharina
+    - family-names: Lownds
+      given-names: Shelley
+    - family-names: Harrison
+      given-names: Billie
+    - family-names: Kuhl
+      given-names: Heiner
+    - family-names: Moittie
+      given-names: Sophie

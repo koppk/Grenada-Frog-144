@@ -1,0 +1,7 @@
+scripts/HANNO.v0.4.pl -t 24 -d WithmRNA_HyloideaProteinSet_HANNO-RUN-Pristimantis_euphronides.genome.fasta -a  ../../GrenadaFrog144/Pristimantis_euphronides.genome.fasta  -p ../../GrenadaFrog144/Hyloidea_Proteins/combined_Hyloidea_proteins.faa  -b  tetrapoda_odb10 -r ../../GrenadaFrog144/Hyloidea_Proteins/combined_rna.fna.gz  -B 0 -P tetrapoda_odb10/refseq_db.faa -E 0 > WithmRNA_HyloideaProteinSet_HANNO-RUN-Pristimantis_euphronides.genome.sh
+
+sed -i '1s|^#! */usr/bash|#!/bin/bash|' *.sh
+
+sudo chmod +x *sh
+
+nohup ./WithmRNA_HyloideaProteinSet_HANNO-RUN-Pristimantis_euphronides.genome.sh > WithmRNA_HyloideaProteinSet_HANNO-RUN-Pristimantis_euphronides.genome.log 2>&1 &
