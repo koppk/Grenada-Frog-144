@@ -30,7 +30,8 @@ AMERICAN_MAINLAND = {
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Great-circle distance in km using the haversine formula (Sinnott 1984)."""
+    """Great-circle distance in km using the haversine formula
+    (Veness, www.movable-type.co.uk/scripts/latlong.html, accessed 2026-05-03)."""
     R = 6371.0088  # Earth mean radius, km
     
     phi1, phi2 = math.radians(lat1), math.radians(lat2)

@@ -57,7 +57,8 @@ ASW_PRISTIMANTIS_PATTERN = re.compile(
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Great-circle distance in km using the haversine formula (Sinnott 1984)."""
+    """Great-circle distance in km using the haversine formula
+    (Veness, www.movable-type.co.uk/scripts/latlong.html, accessed 2026-05-03)."""
     R = 6371.0088  # Earth mean radius, km
 
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -89,11 +90,14 @@ def parse_decimal_pair(match):
     hemisphere implicit (e.g. "7.16866-72.2655" for 7.16866 N, 72.2655 W in
     northern South America). When the second value is positive and large
     enough to be a longitude magnitude (>30) without a sign, treat it as W.
+    Valid only for type localities in the western-hemisphere Americas.
     """
     v1 = float(match.group(1))
     v2 = float(match.group(2))
     if v2 > 30:
         v2 = -v2
+    if not (-90 <= v1 <= 90 and -180 <= v2 <= 0):
+        raise ValueError(f"({v1}, {v2}) outside western-hemisphere Americas range")
     return v1, v2
 
 
