@@ -10,7 +10,7 @@ and the main manuscript section of the same name in Methods, Results,
 and Discussion.
 
 Input and output data files are deposited at Zenodo
-(doi: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+(doi: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 The final scaffolded genome
 (`Pristimantis_euphronides.genome.fasta.gz`) is also deposited at
 NCBI/ENA under accession
