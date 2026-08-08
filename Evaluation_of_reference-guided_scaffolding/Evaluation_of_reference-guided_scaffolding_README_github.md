@@ -8,7 +8,7 @@ Corresponds to Additional file 2, section **"Evaluation of reference-guided
 scaffolding"** and Additional file 3 (Supplementary Results), same section.
 
 Input and output data files are deposited at Zenodo
-(doi: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+(doi: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Scripts
 
