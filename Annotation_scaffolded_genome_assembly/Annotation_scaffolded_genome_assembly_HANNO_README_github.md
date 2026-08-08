@@ -9,7 +9,7 @@ section.
 
 GitHub holds scripts and commands. Full data, output files, and detailed
 descriptions: see Zenodo
-([10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+([10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 
 ## Directory Structure
