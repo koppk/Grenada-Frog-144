@@ -12,8 +12,7 @@ HapDup v0.12 dual haplotype assemblies, WindowMasker soft-masking of
 *Eleutherodactylus coqui* (*E. coqui*) haplotype 2 (GCA_035609135.1), RagTag v2.1.0 scaffolding,
 D-Genies v1.5.0 pre- and post-scaffolding comparisons, scaffolded
 haplotype assemblies, HapDup intermediate files, and computed
-statistics are deposited at:
-[Zenodo](https://doi.org/10.5281/zenodo.15298546).
+statistics are deposited at [Zenodo](https://doi.org/10.5281/zenodo.15298546).
 
 ## Directory structure
 
