@@ -7,7 +7,7 @@ Corresponds to Additional file 2, section **"Read mapping and genome coverage
 analysis"** and Additional file 3 (Supplementary Results), section
 **"Read mapping and genome coverage analysis"**.
 
-Input and output data files are deposited at Zenodo (doi: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+Input and output data files are deposited at Zenodo (doi: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Scripts
 
