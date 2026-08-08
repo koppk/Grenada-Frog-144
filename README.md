@@ -20,7 +20,7 @@ This whole-genome assembly provides a reference for phylogenomic and conservatio
 
 ## Scope
 
-This repository contains **scripts and commands only**. All input data, output files, intermediate results, and detailed per-directory documentation (including tool versions, parameters, and reproducibility notes) are deposited on Zenodo (DOI: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)). The Zenodo deposit mirrors the directory structure of this repository.
+This repository contains **scripts and commands only**. All input data, output files, intermediate results, and detailed per-directory documentation (including tool versions, parameters, and reproducibility notes) are deposited on Zenodo (DOI: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)). The Zenodo deposit mirrors the directory structure of this repository.
 
 ## Repository structure
 
