@@ -4,7 +4,7 @@
   <img src="GrenadaFrogLogo.png" alt="Grenada Frog Logo" width="300">
 </p>
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15298547.svg)](https://doi.org/10.5281/zenodo.15298547)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15298546.svg)](https://doi.org/10.5281/zenodo.15298546)
 
 This repository contains the computational scripts used in the genome assembly, annotation, and analysis of *Pristimantis euphronides* (Grenada frog, specimen GrenadaFrog144), accompanying the manuscript:
 
@@ -51,7 +51,7 @@ Each directory contains a chapter-specific README and a `scripts/` subfolder wit
 
 - **Raw sequencing reads**: ENA/NCBI BioProject [PRJEB89028](https://www.ebi.ac.uk/ena/browser/view/PRJEB89028)
 - **Assembly**: ENA [GCA_965278355.2](https://www.ebi.ac.uk/ena/browser/view/GCA_965278355.2), NCBI [GCA_965278355.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_965278355.2/) (aPriEup1.0)
-- **Complete analysis deposit (data, results, documentation)**: Zenodo [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)
+- **Complete analysis deposit (data, results, documentation)**: Zenodo [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)
 
 ## License
 
