@@ -45,7 +45,7 @@ BioProject PRJEB89028
 available via NCBI
 (https://www.ncbi.nlm.nih.gov/bioproject/PRJEB89028/).
 All supplementary data are archived at Zenodo
-(doi: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+(doi: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Author
 
