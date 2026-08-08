@@ -2,7 +2,7 @@
 
 GitHub holds scripts and commands. Full file descriptions, gene numbering,
 and Gnomon comparison: see Zenodo
-([10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+([10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 
 ## Assembly
