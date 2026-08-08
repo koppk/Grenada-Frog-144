@@ -13,7 +13,7 @@ HapDup v0.12 dual haplotype assemblies, WindowMasker soft-masking of
 D-Genies v1.5.0 pre- and post-scaffolding comparisons, scaffolded
 haplotype assemblies, HapDup intermediate files, and computed
 statistics are deposited at
-[Zenodo](https://doi.org/10.5281/zenodo.15298547).
+[Zenodo](https://doi.org/10.5281/zenodo.15298546).
 
 ## Directory structure
 
