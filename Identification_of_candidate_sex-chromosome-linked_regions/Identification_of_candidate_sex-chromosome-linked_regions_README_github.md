@@ -9,14 +9,14 @@ sex-chromosome-linked regions"** and Additional file 3 (Supplementary
 Results), same section.
 
 Input and output data files are deposited at Zenodo
-(doi: [10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+(doi: [10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Directory structure
 
 Scripts are collected in a flat `scripts/` directory. For the full
 directory structure with subdirectories by analysis stage, see the
 Zenodo README
-([doi:10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+([doi:10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Scripts
 
