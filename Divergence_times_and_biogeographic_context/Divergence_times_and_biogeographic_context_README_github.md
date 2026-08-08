@@ -86,7 +86,7 @@ Divergence_times_and_biogeographic_context/
 ## Data availability
 
 Input data and pre-computed output files are archived on Zenodo:
-[doi:10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)
+[doi:10.5281/zenodo.15298546](https://doi.org/10.5281/15298546)
 
 The Portik et al. (2023) time tree is available as Supplementary File S3 of:
 Portik DM, Streicher JW, Wiens JJ. Frog phylogeny: a time-calibrated,
