@@ -9,7 +9,7 @@ via k-mer-based distance estimation"** and Additional file 3
 (Supplementary Results), same section.
 
 Input data, output files, and figures are deposited at Zenodo
-([doi:10.5281/zenodo.15298547](https://doi.org/10.5281/zenodo.15298547)).
+([doi:10.5281/zenodo.15298546](https://doi.org/10.5281/zenodo.15298546)).
 
 ## Directory structure
 
